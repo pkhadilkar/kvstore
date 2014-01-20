@@ -5,7 +5,6 @@ import (
        "fmt"
        "sync"
        "strconv"
-       "bytes"
        "errors"
 )
 
@@ -99,20 +98,12 @@ func TestKvStoreStress(t *testing.T) {
       for i := 0; i < clients; i += 1 {
       	  go launchClient(base + strconv.Itoa(i), errChan)
       }
-      var buffer bytes.Buffer
+      
       // check for error messages from one of the clients
       select {
       	     case msg, ok := <- errChan:
 	     	  if ok {
-		     for {
-		     	 buffer.WriteString(msg)
-			 msg, ok = <- errChan
-			 if !ok{
-			    break;
-			 }
-		     }
-		     // not very smart. Writes all error messages to console
-		     t.Errorf(buffer.String(), errors.New(buffer.String()))
+		    t.Errorf(msg, errors.New(msg))
 		  }
 	     default:
 		//no error detected
