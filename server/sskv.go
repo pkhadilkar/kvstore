@@ -15,6 +15,7 @@ package server
 import (
        "strconv"
        "errors"
+       "sync"
 )
 
 // Entry type represents a key value store entry.
@@ -33,21 +34,21 @@ const base = 10
 // number of bits in the supported interger type
 const integerBits = 64	
 
-// synchronize accesses to map using channels
+// Synchronize accesses to map using channels
 // capacity 1 to ensure single map accessor
 // Ensure that server start process initializes
 // channel by writing a value
 
 type kvStore struct {
      store map[string]ValueWrapper
-     token chan bool
+     mutex sync.RWMutex
 }
 
 // GetValue gets a value from map for a given key. 
 // It returns false if key is not present and true otherwise.
 func (s *kvStore) GetValue(key string) (ValueWrapper, bool) {
-     s.lock()
-     defer s.unlock()
+     s.readLock()
+     defer s.readUnlock()
      value, ok := s.store[key]
      return value, ok
 }
@@ -60,8 +61,8 @@ func (s *kvStore) GetValue(key string) (ValueWrapper, bool) {
 func (s *kvStore)GetAllEntries() *[]*Entry {
      entries := make([]*Entry, len(s.store))
      i := 0
-     s.lock()
-     defer s.unlock()
+     s.readLock()
+     defer s.readUnlock()
      for key, value := range s.store {
      	 entry := Entry{key, value.Value}
      	 entries[i] = &entry
@@ -75,33 +76,45 @@ func (s *kvStore)GetAllEntries() *[]*Entry {
 // PutValue stores a given entry object in map
 func (s *kvStore)PutValue(e *Entry){
      value := ValueWrapper{e.Value}
-     s.lock()
-     defer s.unlock()
+     s.writeLock()
+     defer s.writeUnlock()
      s.store[e.Key] = value
 }
 // DeleteEntry deletes entry for a given key from kvstore
 func (s *kvStore) DeleteEntry(key string){
-     s.lock()
-     defer s.unlock()
+     s.writeLock()
+     defer s.writeUnlock()
      delete(s.store, key)
 }
 
-// lock method allows only one thread to operate on map
+// readLock method allows one or more readerthread to operate on map
 // at a time. Other concurrent threads block.
-func (s *kvStore) lock(){
-	<- s.token
+func (s *kvStore) readLock(){
+	s.mutex.RLock()
+}
+
+// unlock method for reader lock
+func (s *kvStore) readUnlock(){
+     s.mutex.RUnlock()
+}
+
+// writeLock method allows only one thread to operate on map
+// at a time. Other concurrent threads block.
+func (s *kvStore) writeLock(){
+	s.mutex.Lock()
 }
 
 // unlock method releases lock
-func (s *kvStore) unlock(){
-     s.token <- true
+func (s *kvStore) writeUnlock(){
+     s.mutex.Unlock()
 }
+
 
 // getInt method returns int64 value for given key if
 // it is present
 func (s *kvStore) getInt(key string) (int64, error){
-     s.lock()
-     defer s.unlock()
+     s.readLock()
+     defer s.readUnlock()
      value, ok := s.store[key]
      if !ok{
      	return 0, errors.New("Key was not found in the map")
@@ -117,8 +130,8 @@ func (s *kvStore) getInt(key string) (int64, error){
 // IncrEntry increments integer value for a given key by 1
 // if the value is present and it is of type integer
 func (s *kvStore) IncrEntry(key string) (ValueWrapper, error){
-     s.lock()
-     defer s.unlock()
+     s.writeLock()
+     defer s.writeUnlock()
      value, ok := s.store[key]
      if !ok  {
      	return ValueWrapper{}, errors.New("Value not found")
@@ -136,8 +149,8 @@ func (s *kvStore) IncrEntry(key string) (ValueWrapper, error){
 // DecrEntry decrements integer value for a given key by 1
 // if the value is present and it is of type integer
 func (s *kvStore) DecrEntry(key string) (ValueWrapper, error){
-     s.lock()
-     defer s.unlock()
+     s.writeLock()
+     defer s.writeUnlock()
      value, ok := s.store[key]
      if !ok {
      	return ValueWrapper{}, errors.New("Value not found")

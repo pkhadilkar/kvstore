@@ -41,12 +41,13 @@ func Put(key string, value string) error {
      if err != nil {
      	return err
      }
-     client := &http.Client{}
+     
      req, err := http.NewRequest("POST", serverBase, bytes.NewReader(buffer))
      if err != nil {
      	return err
      }
      req.Header.Add("Content-type", "application/json")
+     client := &http.Client{}
      r, err := client.Do(req)
      defer r.Body.Close()
      return err
